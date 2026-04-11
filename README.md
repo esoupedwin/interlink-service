@@ -1,6 +1,6 @@
 # INTERLINK
 
-A scheduled news intelligence service that automatically aggregates RSS feeds from major global outlets, categorises each article using OpenAI's LLM, scrapes the full article body to generate a concise gist, and stores everything in a Neon Postgres database.
+A scheduled news service that automatically aggregates RSS feeds from major global outlets, categorises each article using OpenAI's LLM, scrapes the full article body to generate a concise gist, and stores everything in a Neon Postgres database.
 
 Every 4 hours it:
 1. Fetches new entries from configured RSS feeds
