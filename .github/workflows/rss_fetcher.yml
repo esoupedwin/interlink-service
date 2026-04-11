@@ -1,0 +1,27 @@
+name: RSS Fetcher
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'   # every 4 hours
+  workflow_dispatch:          # manual run button in GitHub UI
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: rss_fetcher/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r rss_fetcher/requirements.txt
+
+      - name: Run RSS fetcher
+        run: python rss_fetcher/main.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
