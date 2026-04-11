@@ -1,0 +1,10 @@
+[
+  {
+    "name": "CNN News",
+    "url": "http://rss.cnn.com/rss/edition.rss"
+  },
+  {
+    "name": "BBC Feed",
+    "url": "http://feeds.bbci.co.uk/news/rss.xml"
+  }
+]
