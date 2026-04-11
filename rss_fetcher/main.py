@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 from db import ensure_schema, fetch_untagged_entries, insert_entries, managed_connection, update_entry_tags
 from fetcher import fetch_feed
+from summariser import summarise_entries
 from tagger import tag_entries
 
 # ---------------------------------------------------------------------------
@@ -123,6 +124,10 @@ def run() -> None:
         tags = tag_entries(entries)
         for entry, entry_tags in zip(entries, tags):
             entry["tags"] = entry_tags
+
+        gists = summarise_entries(entries)
+        for entry, gist in zip(entries, gists):
+            entry["gist"] = gist
 
         try:
             with managed_connection() as conn:

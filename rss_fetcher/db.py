@@ -27,13 +27,15 @@ CREATE TABLE IF NOT EXISTS feed_entries (
     summary      TEXT,
     author       TEXT,
     tags         TEXT[]      NOT NULL DEFAULT '{}',
+    gist         TEXT,
     published_at TIMESTAMPTZ,
     fetched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_feed_entry UNIQUE (feed_url, guid)
 );
 
--- Idempotent migration: add tags column to pre-existing tables
+-- Idempotent migrations
 ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS gist TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_feed_entries_feed_url
     ON feed_entries (feed_url);
@@ -47,9 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_feed_entries_tags
 
 _INSERT_SQL = """
 INSERT INTO feed_entries
-    (feed_name, feed_url, guid, title, link, summary, author, tags, published_at)
+    (feed_name, feed_url, guid, title, link, summary, author, tags, gist, published_at)
 VALUES
-    (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT ON CONSTRAINT uq_feed_entry
 DO NOTHING;
 """
@@ -120,7 +122,8 @@ def insert_entries(conn: PgConnection, entries: list[dict]) -> tuple[int, int]:
             params = (
                 entry["feed_name"], entry["feed_url"], entry["guid"],
                 entry["title"], entry["link"], entry["summary"],
-                entry["author"], entry.get("tags", []), entry["published_at"],
+                entry["author"], entry.get("tags", []), entry.get("gist"),
+                entry["published_at"],
             )
             cur.execute(_INSERT_SQL, params)
             inserted += cur.rowcount  # 1 if inserted, 0 if skipped
