@@ -1,4 +1,5 @@
 .env
+rss_fetcher/logs/
 __pycache__/
 *.pyc
 *.pyo

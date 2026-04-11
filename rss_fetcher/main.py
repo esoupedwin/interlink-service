@@ -8,13 +8,14 @@ systemd timer, or any external scheduler).  It exits with:
 """
 import json
 import logging
+import logging.handlers
 import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from db import ensure_schema, insert_entries, managed_connection
+from db import ensure_schema, fetch_untagged_entries, insert_entries, managed_connection, update_entry_tags
 from fetcher import fetch_feed
 from tagger import tag_entries
 
@@ -22,12 +23,36 @@ from tagger import tag_entries
 # Logging
 # ---------------------------------------------------------------------------
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    stream=sys.stdout,
-)
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s — %(message)s"
+LOG_DATE_FMT = "%Y-%m-%dT%H:%M:%S"
+
+
+def _setup_logging() -> None:
+    LOG_DIR.mkdir(exist_ok=True)
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    # stdout — always on, so GitHub Actions / terminal captures it
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FMT))
+
+    # rotating file — daily rotation, keep 7 days
+    file_handler = logging.handlers.TimedRotatingFileHandler(
+        filename=LOG_DIR / "rss_fetcher.log",
+        when="midnight",
+        backupCount=7,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FMT))
+    file_handler.suffix = "%Y-%m-%d"
+
+    root.addHandler(stdout_handler)
+    root.addHandler(file_handler)
+
+
+_setup_logging()
 logger = logging.getLogger("rss_fetcher")
 
 # ---------------------------------------------------------------------------
@@ -112,6 +137,28 @@ def run() -> None:
         except Exception as exc:
             logger.error("DB error inserting entries for feed '%s': %s", name, exc)
             failed_feeds.append(name)
+            continue
+
+        # Auto-backfill: re-tag any entries that landed with empty tags
+        # (e.g. due to a mid-batch API error on this or a previous run)
+        try:
+            with managed_connection() as conn:
+                untagged = fetch_untagged_entries(conn, url)
+            if untagged:
+                logger.warning(
+                    "Feed '%s': %d entries with empty tags detected — re-tagging.",
+                    name, len(untagged),
+                )
+                retry_tags = tag_entries(untagged)
+                with managed_connection() as conn:
+                    for entry, entry_tags in zip(untagged, retry_tags):
+                        update_entry_tags(conn, entry["id"], entry_tags)
+                logger.info(
+                    "Feed '%s': backfill complete — %d entries re-tagged.",
+                    name, len(untagged),
+                )
+        except Exception as exc:
+            logger.error("Auto-backfill failed for feed '%s': %s", name, exc)
 
     logger.info(
         "Run complete. Entries: %d attempted, %d inserted. Failed feeds: %s",

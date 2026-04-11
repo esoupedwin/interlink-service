@@ -127,3 +127,32 @@ def insert_entries(conn: PgConnection, entries: list[dict]) -> tuple[int, int]:
 
     conn.commit()
     return len(entries), inserted
+
+
+def fetch_untagged_entries(conn: PgConnection, feed_url: str) -> list[dict]:
+    """Return entries for a given feed that still have empty tags."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, feed_name, feed_url, title, summary
+            FROM feed_entries
+            WHERE feed_url = %s AND tags = '{}'
+            ORDER BY id;
+            """,
+            (feed_url,),
+        )
+        rows = cur.fetchall()
+    return [
+        {"id": r[0], "feed_name": r[1], "feed_url": r[2], "title": r[3], "summary": r[4]}
+        for r in rows
+    ]
+
+
+def update_entry_tags(conn: PgConnection, entry_id: int, tags: list[str]) -> None:
+    """Overwrite the tags for a single entry by id."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE feed_entries SET tags = %s WHERE id = %s;",
+            (tags, entry_id),
+        )
+    conn.commit()
