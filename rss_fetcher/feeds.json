@@ -6,5 +6,9 @@
   {
     "name": "BBC Feed",
     "url": "http://feeds.bbci.co.uk/news/rss.xml"
+  },
+  {
+    "name": "Al Jazeera Feed",
+    "url": "https://www.aljazeera.com/xml/rss/all.xml"
   }
 ]
