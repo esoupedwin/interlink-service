@@ -1,38 +1,33 @@
 """
-LLM-based categorization of RSS feed entries using OpenAI gpt-4o-mini.
+LLM-based categorization of RSS feed entries using OpenAI.
 
 Entries are sent in batches to minimize API calls and cost.
+Configuration (categories, prompt, batch size) is loaded from config.json.
 """
 import json
 import logging
 import os
+from pathlib import Path
 
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-CATEGORIES = [
-    "United-States", "Middle-East", "AI", "Sports",
-    "China", "Taiwan", "Israel", "Economy", "Space", "Misc",
-]
-
-BATCH_SIZE = 20  # entries per API call
-
 # Override via OPENAI_MODEL env var. Defaults to gpt-4o-mini (cheapest, fast).
-# Other good options: gpt-4o, gpt-4.1, gpt-4.1-mini
 DEFAULT_MODEL = "gpt-4o-mini"
 
-_SYSTEM_PROMPT = f"""You are a news categorization assistant.
-Given a numbered list of news entries (title + summary), assign zero or more categories to each one.
+BASE_DIR = Path(__file__).parent
+CONFIG_FILE = BASE_DIR / "config.json"
 
-Available categories: {", ".join(CATEGORIES)}
 
-Rules:
-- An entry may have multiple categories or none at all (empty list).
-- Use "Misc" only when no other category fits and the entry is worth tagging.
-- Respond ONLY with a JSON array of arrays — one inner array per entry, in the same order as the input.
-- Example for 3 entries: [["United-States", "Economy"], ["AI"], []]
-"""
+def _load_config() -> dict:
+    with CONFIG_FILE.open() as fh:
+        return json.load(fh)["tagging"]
+
+
+def _build_system_prompt(config: dict) -> str:
+    categories = ", ".join(config["categories"])
+    return config["system_prompt"].format(categories=categories)
 
 
 def _build_user_prompt(entries: list[dict]) -> str:
@@ -44,13 +39,18 @@ def _build_user_prompt(entries: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def _call_openai(client: OpenAI, entries: list[dict]) -> list[list[str]]:
+def _call_openai(
+    client: OpenAI,
+    entries: list[dict],
+    system_prompt: str,
+    valid_categories: set[str],
+) -> list[list[str]]:
     model = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
     response = client.chat.completions.create(
         model=model,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": (
@@ -67,30 +67,25 @@ def _call_openai(client: OpenAI, entries: list[dict]) -> list[list[str]]:
     data = json.loads(raw)
 
     # Accept {"tags": [[...]]} or bare [[...]]
-    if isinstance(data, dict):
-        result = data.get("tags", [])
-    else:
-        result = data
+    result = data.get("tags", []) if isinstance(data, dict) else data
 
     if not isinstance(result, list) or len(result) != len(entries):
         logger.warning(
             "Unexpected tag response length (got %d, expected %d). Padding with [].",
             len(result), len(entries),
         )
-        # Pad or truncate to match entry count
         result = (result + [[] for _ in entries])[: len(entries)]
 
     # Sanitize: keep only known categories, ensure lists
-    valid = set(CATEGORIES)
     return [
-        [tag for tag in (row if isinstance(row, list) else []) if tag in valid]
+        [tag for tag in (row if isinstance(row, list) else []) if tag in valid_categories]
         for row in result
     ]
 
 
 def tag_entries(entries: list[dict]) -> list[list[str]]:
     """
-    Assign category tags to each entry using gpt-4o-mini.
+    Assign category tags to each entry.
 
     Returns a list of tag-lists in the same order as `entries`.
     On any error for a batch, that batch's entries receive empty tag lists.
@@ -103,13 +98,18 @@ def tag_entries(entries: list[dict]) -> list[list[str]]:
         logger.warning("OPENAI_API_KEY not set — skipping tagging.")
         return [[] for _ in entries]
 
+    config = _load_config()
+    system_prompt = _build_system_prompt(config)
+    valid_categories = set(config["categories"])
+    batch_size = config["batch_size"]
+
     client = OpenAI(api_key=api_key)
     all_tags: list[list[str]] = []
 
-    for batch_start in range(0, len(entries), BATCH_SIZE):
-        batch = entries[batch_start: batch_start + BATCH_SIZE]
+    for batch_start in range(0, len(entries), batch_size):
+        batch = entries[batch_start: batch_start + batch_size]
         try:
-            tags = _call_openai(client, batch)
+            tags = _call_openai(client, batch, system_prompt, valid_categories)
             all_tags.extend(tags)
             logger.info(
                 "Tagged batch %d–%d (%d entries).",

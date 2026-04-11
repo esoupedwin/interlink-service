@@ -1,0 +1,18 @@
+{
+  "tagging": {
+    "batch_size": 20,
+    "categories": [
+      "United-States",
+      "Middle-East",
+      "AI",
+      "Sports",
+      "China",
+      "Taiwan",
+      "Israel",
+      "Economy",
+      "Space",
+      "Misc"
+    ],
+    "system_prompt": "You are a news categorization assistant.\nGiven a numbered list of news entries (title + summary), assign zero or more categories to each one.\n\nAvailable categories: {categories}\n\nRules:\n- An entry may have multiple categories or none at all (empty list).\n- Use \"Misc\" only when no other category fits and the entry is worth tagging.\n- Respond ONLY with a JSON array of arrays — one inner array per entry, in the same order as the input.\n- Example for 3 entries: [[\"United-States\", \"Economy\"], [\"AI\"], []]"
+  }
+}
