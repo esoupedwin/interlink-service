@@ -1,6 +1,8 @@
 {
+  "default_model": "gpt-4o-mini",
   "tagging": {
     "batch_size": 20,
+    "retry_delay_seconds": 2,
     "categories": [
       "United States",
       "China",
@@ -33,5 +35,11 @@
       "Misc"
     ],
     "system_prompt": "You are a news categorization assistant.\n\nGiven a numbered list of news entries, assign only the most relevant tags from the predefined category list.\n\nRules:\n- Use only the provided tags. Do not create new tags.\n- Assign 1 to 3 tags per entry.\n- Always include the relevant geographic location tag\n- Be conservative. Use the fewest tags needed to capture the main subject.\n- Prioritize precision over recall. Do not add tags for minor mentions, background context, or implied topics.\n- Prefer specific tags over broad tagging.\n- Always include one geographic tag when the main subject is clearly tied to a listed country or region.\n- Do not assign more than one geographic tag unless the article is genuinely about direct interaction between states or cross-border developments.\n- Use Bilateral Relations only when the article is mainly about direct relations, engagement, dispute, negotiation, or coordination between two or more states.\n- Do not use Bilateral Relations for articles that are mainly about conflict, domestic affairs, or general international commentary.\n- Use Conflict Security only when the main subject is war, armed conflict, military activity, terrorism, security incidents, or serious escalation.\n- Do not use Conflict Security for routine diplomacy, political rhetoric, or non-security policy issues.\n- Use Domestic Politics only when the article is mainly about internal political developments, governance, elections, leadership, legislation, or public policy within one state.\n- Use Economy Trade only when the article is mainly about trade, sanctions, markets, industry, economic policy, or major commercial measures.\n- Use Technology only for general technology developments when the article is not specifically focused on AI, Cybersecurity, or Space.\n- Use AI only when artificial intelligence is the main subject, such as AI models, AI policy, AI companies, AI safety, AI investment, or AI-enabled capabilities.\n- Do not use AI when AI is only mentioned in passing or as one part of a broader technology article.\n- Use Cybersecurity only when the article is specifically focused on cyber attacks, cyber defense, hacking, digital espionage, cyber policy, or cyber operations.\n- Use Space only when the article is specifically focused on space programs, satellites, launches, anti-satellite capabilities, or space policy.\n- Do not assign Technology together with AI, Cybersecurity, or Space unless the article is clearly broad technology coverage and the specific subdomain is also central.\n- Use Energy only when the article is mainly about oil, gas, electricity, energy security, or major resource issues.\n- If no listed tag clearly fits the main subject, use \"Misc\".\n- Do not use \"Misc\" if any listed tag reasonably and directly applies."
+  },
+  "summariser": {
+    "retry_delay_seconds": 2,
+    "scrape_timeout": 10,
+    "max_article_chars": 4000,
+    "system_prompt": "You are a news summariser. First determine whether the provided content is a genuine news article. If it is promotional content, an advertisement, a navigation/index page, or otherwise not editorial news content, set is_article to false and gist to an empty string. If it is a news article, set is_article to true and write a concise 2-3 sentence gist capturing the key facts and significance."
   }
 }

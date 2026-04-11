@@ -7,6 +7,7 @@ For each entry:
 - OpenAI generates a 2-3 sentence gist
 - Scrape or API failures return None gracefully
 """
+import json
 import logging
 import os
 import time
@@ -18,10 +19,8 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gpt-4o-mini"
-RETRY_DELAY_SECONDS = 2
-SCRAPE_TIMEOUT = 10     # seconds
-MAX_ARTICLE_CHARS = 4000  # truncate scraped body to control token usage
+BASE_DIR = Path(__file__).parent
+CONFIG_FILE = BASE_DIR / "config.json"
 
 _SCRAPE_HEADERS = {
     "User-Agent": (
@@ -52,20 +51,17 @@ _RESPONSE_FORMAT = {
     },
 }
 
-_SYSTEM_PROMPT = (
-    "You are a news summariser. First determine whether the provided content is a genuine "
-    "news article. If it is promotional content, an advertisement, a navigation/index page, "
-    "or otherwise not editorial news content, set is_article to false and gist to an empty string. "
-    "If it is a news article, set is_article to true and write a concise 2-3 sentence gist "
-    "capturing the key facts and significance."
-)
+
+def _load_config() -> dict:
+    with CONFIG_FILE.open() as fh:
+        return json.load(fh)
 
 
 # ---------------------------------------------------------------------------
 # Scraping
 # ---------------------------------------------------------------------------
 
-def _scrape_article(url: str) -> str | None:
+def _scrape_article(url: str, timeout: int, max_chars: int) -> str | None:
     """
     Fetch and extract the main text body of an article URL.
     Returns None on any network or parse error.
@@ -74,7 +70,7 @@ def _scrape_article(url: str) -> str | None:
         response = httpx.get(
             url,
             headers=_SCRAPE_HEADERS,
-            timeout=SCRAPE_TIMEOUT,
+            timeout=timeout,
             follow_redirects=True,
         )
         response.raise_for_status()
@@ -108,21 +104,25 @@ def _scrape_article(url: str) -> str | None:
         logger.warning("No article text extracted from '%s'.", url)
         return None
 
-    return text[:MAX_ARTICLE_CHARS]
+    return text[:max_chars]
 
 
 # ---------------------------------------------------------------------------
 # Summarisation
 # ---------------------------------------------------------------------------
 
-def _call_openai_single(client: OpenAI, article_text: str) -> str | None:
-    import json
-    model = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
+def _call_openai_single(
+    client: OpenAI,
+    article_text: str,
+    system_prompt: str,
+    default_model: str,
+) -> str | None:
+    model = os.environ.get("OPENAI_MODEL", default_model)
     response = client.chat.completions.create(
         model=model,
         response_format=_RESPONSE_FORMAT,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": article_text},
         ],
         temperature=0,
@@ -133,10 +133,17 @@ def _call_openai_single(client: OpenAI, article_text: str) -> str | None:
     return data["gist"] or None
 
 
-def _summarise_with_retry(client: OpenAI, orig_idx: int, article_text: str) -> str | None:
+def _summarise_with_retry(
+    client: OpenAI,
+    orig_idx: int,
+    article_text: str,
+    system_prompt: str,
+    default_model: str,
+    retry_delay: int,
+) -> str | None:
     for attempt in (1, 2):
         try:
-            gist = _call_openai_single(client, article_text)
+            gist = _call_openai_single(client, article_text, system_prompt, default_model)
             if attempt == 2:
                 logger.info("Entry %d summarisation succeeded on retry.", orig_idx + 1)
             return gist
@@ -144,9 +151,9 @@ def _summarise_with_retry(client: OpenAI, orig_idx: int, article_text: str) -> s
             if attempt == 1:
                 logger.warning(
                     "Entry %d summarisation failed (attempt 1): %s. Retrying in %ds...",
-                    orig_idx + 1, exc, RETRY_DELAY_SECONDS,
+                    orig_idx + 1, exc, retry_delay,
                 )
-                time.sleep(RETRY_DELAY_SECONDS)
+                time.sleep(retry_delay)
             else:
                 logger.error(
                     "Entry %d summarisation failed after 2 attempts: %s.",
@@ -177,6 +184,15 @@ def summarise_entries(entries: list[dict]) -> list[str | None]:
         logger.warning("OPENAI_API_KEY not set — skipping summarisation.")
         return [None] * len(entries)
 
+    config = _load_config()
+    summariser_cfg = config["summariser"]
+    default_model = config.get("default_model", "gpt-4o-mini")
+
+    system_prompt = summariser_cfg["system_prompt"]
+    scrape_timeout = summariser_cfg["scrape_timeout"]
+    max_article_chars = summariser_cfg["max_article_chars"]
+    retry_delay = summariser_cfg["retry_delay_seconds"]
+
     client = OpenAI(api_key=api_key)
     gists: list[str | None] = [None] * len(entries)
 
@@ -201,7 +217,7 @@ def summarise_entries(entries: list[dict]) -> list[str | None]:
     # Scrape articles
     scraped: list[tuple[int, str]] = []  # (original_index, article_text)
     for i, entry in to_scrape:
-        text = _scrape_article(entry["link"])
+        text = _scrape_article(entry["link"], scrape_timeout, max_article_chars)
         if text:
             scraped.append((i, text))
         else:
@@ -218,7 +234,10 @@ def summarise_entries(entries: list[dict]) -> list[str | None]:
 
     # Summarise one article at a time to guarantee 1-to-1 alignment
     for orig_idx, article_text in scraped:
-        gist_text = _summarise_with_retry(client, orig_idx, article_text)
+        gist_text = _summarise_with_retry(
+            client, orig_idx, article_text,
+            system_prompt, default_model, retry_delay,
+        )
         gists[orig_idx] = gist_text
         logger.debug("Entry %d gist generated.", orig_idx + 1)
 

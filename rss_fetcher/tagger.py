@@ -14,21 +14,18 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gpt-4o-mini"
-RETRY_DELAY_SECONDS = 2
-
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "config.json"
 
 
 def _load_config() -> dict:
     with CONFIG_FILE.open() as fh:
-        return json.load(fh)["tagging"]
+        return json.load(fh)
 
 
-def _build_system_prompt(config: dict) -> str:
-    categories = ", ".join(config["categories"])
-    return config["system_prompt"].format(categories=categories)
+def _build_system_prompt(tagging_cfg: dict) -> str:
+    categories = ", ".join(tagging_cfg["categories"])
+    return tagging_cfg["system_prompt"].format(categories=categories)
 
 
 def _build_response_format(categories: list[str]) -> dict:
@@ -78,8 +75,9 @@ def _call_openai(
     entries: list[dict],
     system_prompt: str,
     response_format: dict,
+    default_model: str,
 ) -> list[list[str]]:
-    model = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
+    model = os.environ.get("OPENAI_MODEL", default_model)
     logger.debug("Sending %d entries to model '%s'.", len(entries), model)
 
     response = client.chat.completions.create(
@@ -127,11 +125,13 @@ def _tag_batch_with_retry(
     batch_start: int,
     system_prompt: str,
     response_format: dict,
+    default_model: str,
+    retry_delay: int,
 ) -> list[list[str]]:
     """Call OpenAI for a batch, retrying once on failure."""
     for attempt in (1, 2):
         try:
-            tags = _call_openai(client, batch, system_prompt, response_format)
+            tags = _call_openai(client, batch, system_prompt, response_format, default_model)
             if attempt == 2:
                 logger.info(
                     "Batch %d–%d succeeded on retry.",
@@ -143,9 +143,9 @@ def _tag_batch_with_retry(
                 logger.warning(
                     "Batch %d–%d failed (attempt 1): %s. Retrying in %ds...",
                     batch_start + 1, batch_start + len(batch),
-                    exc, RETRY_DELAY_SECONDS,
+                    exc, retry_delay,
                 )
-                time.sleep(RETRY_DELAY_SECONDS)
+                time.sleep(retry_delay)
             else:
                 logger.error(
                     "Batch %d–%d failed after 2 attempts: %s. Entries will get Misc fallback.",
@@ -171,16 +171,24 @@ def tag_entries(entries: list[dict]) -> list[list[str]]:
         return [[] for _ in entries]
 
     config = _load_config()
-    system_prompt = _build_system_prompt(config)
-    response_format = _build_response_format(config["categories"])
-    batch_size = config["batch_size"]
+    tagging_cfg = config["tagging"]
+    default_model = config.get("default_model", "gpt-4o-mini")
+
+    system_prompt = _build_system_prompt(tagging_cfg)
+    response_format = _build_response_format(tagging_cfg["categories"])
+    batch_size = tagging_cfg["batch_size"]
+    retry_delay = tagging_cfg["retry_delay_seconds"]
 
     client = OpenAI(api_key=api_key)
     all_tags: list[list[str]] = []
 
     for batch_start in range(0, len(entries), batch_size):
         batch = entries[batch_start: batch_start + batch_size]
-        tags = _tag_batch_with_retry(client, batch, batch_start, system_prompt, response_format)
+        tags = _tag_batch_with_retry(
+            client, batch, batch_start,
+            system_prompt, response_format,
+            default_model, retry_delay,
+        )
         all_tags.extend(tags)
         logger.info(
             "Tagged batch %d–%d (%d entries).",
