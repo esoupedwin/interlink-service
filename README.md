@@ -60,7 +60,19 @@ Unique constraint on `(feed_url, guid)`.
 
 ```bash
 pip install -r rss_fetcher/requirements.txt
-cp rss_fetcher/.env.example rss_fetcher/.env  # fill in DATABASE_URL and OPENAI_API_KEY
+```
+
+Create `rss_fetcher/.env` with your credentials:
+
+```
+DATABASE_URL=postgresql://...?sslmode=require
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Then run:
+
+```bash
 cd rss_fetcher
 python main.py
 ```
@@ -68,7 +80,8 @@ python main.py
 To re-tag all existing entries with empty tags:
 
 ```bash
-python rss_fetcher/backfill_tags.py
+cd rss_fetcher
+python backfill_tags.py
 ```
 
 ## Scheduling
