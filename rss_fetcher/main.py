@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from db import ensure_schema, insert_entries, managed_connection
 from fetcher import fetch_feed
+from tagger import tag_entries
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -93,6 +94,10 @@ def run() -> None:
         if not entries:
             logger.info("Feed '%s': no entries to insert.", name)
             continue
+
+        tags = tag_entries(entries)
+        for entry, entry_tags in zip(entries, tags):
+            entry["tags"] = entry_tags
 
         try:
             with managed_connection() as conn:
