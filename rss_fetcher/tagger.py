@@ -120,12 +120,17 @@ def _call_openai(
 
     result = []
     for i, (entry, geo, topic) in enumerate(zip(entries, geo_list, topic_list)):
-        # Geo tags: empty is acceptable (some articles have no clear geo focus)
-        # Topic tags: apply Misc fallback if model returned nothing
+        title = entry.get("title", "(no title)")
+        if not geo:
+            logger.warning(
+                "Entry %d ('%s'): model returned empty geo_tags — applying Others fallback.",
+                i + 1, title,
+            )
+            geo = ["Others"]
         if not topic:
             logger.warning(
                 "Entry %d ('%s'): model returned empty topic_tags — applying Misc fallback.",
-                i + 1, entry.get("title", "(no title)"),
+                i + 1, title,
             )
             topic = ["Misc"]
         result.append({"geo_tags": geo, "topic_tags": topic})
@@ -164,7 +169,7 @@ def _tag_batch_with_retry(
                     "Batch %d–%d failed after 2 attempts: %s. Entries will get Misc fallback.",
                     batch_start + 1, batch_start + len(batch), exc,
                 )
-                return [{"geo_tags": [], "topic_tags": ["Misc"]}] * len(batch)
+                return [{"geo_tags": ["Others"], "topic_tags": ["Misc"]}] * len(batch)
 
 
 def tag_entries(entries: list[dict]) -> list[dict]:
@@ -181,7 +186,7 @@ def tag_entries(entries: list[dict]) -> list[dict]:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         logger.warning("OPENAI_API_KEY not set — skipping tagging.")
-        return [{"geo_tags": [], "topic_tags": []} for _ in entries]
+        return [{"geo_tags": ["Others"], "topic_tags": ["Misc"]} for _ in entries]
 
     config = _load_config()
     tagging_cfg = config["tagging"]
