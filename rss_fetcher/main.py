@@ -19,6 +19,7 @@ from db import ensure_schema, fetch_untagged_entries, insert_entries, managed_co
 from fetcher import fetch_feed
 from summariser import summarise_entries
 from tagger import tag_entries
+from translator import translate_entries
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -120,6 +121,8 @@ def run() -> None:
         if not entries:
             logger.info("Feed '%s': no entries to insert.", name)
             continue
+
+        translate_entries(entries)
 
         tag_results = tag_entries(entries)
         for entry, tag_result in zip(entries, tag_results):

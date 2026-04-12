@@ -22,10 +22,12 @@ CREATE TABLE IF NOT EXISTS feed_entries (
     feed_name    TEXT        NOT NULL,
     feed_url     TEXT        NOT NULL,
     guid         TEXT        NOT NULL,
-    title        TEXT,
-    link         TEXT,
-    summary      TEXT,
-    author       TEXT,
+    title            TEXT,
+    original_title   TEXT,
+    link             TEXT,
+    summary          TEXT,
+    original_summary TEXT,
+    author           TEXT,
     geo_tags     TEXT[]      NOT NULL DEFAULT '{}',
     topic_tags   TEXT[]      NOT NULL DEFAULT '{}',
     gist         TEXT,
@@ -35,9 +37,11 @@ CREATE TABLE IF NOT EXISTS feed_entries (
 );
 
 -- Idempotent migrations
-ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS geo_tags   TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS topic_tags TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS gist TEXT;
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS geo_tags          TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS topic_tags        TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS gist              TEXT;
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS original_title    TEXT;
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS original_summary  TEXT;
 DROP INDEX  IF EXISTS idx_feed_entries_tags;
 ALTER TABLE feed_entries DROP COLUMN IF EXISTS tags;
 
@@ -56,9 +60,10 @@ CREATE INDEX IF NOT EXISTS idx_feed_entries_topic_tags
 
 _INSERT_SQL = """
 INSERT INTO feed_entries
-    (feed_name, feed_url, guid, title, link, summary, author, geo_tags, topic_tags, gist, published_at)
+    (feed_name, feed_url, guid, title, original_title, link, summary, original_summary,
+     author, geo_tags, topic_tags, gist, published_at)
 VALUES
-    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT ON CONSTRAINT uq_feed_entry
 DO NOTHING;
 """
@@ -128,8 +133,10 @@ def insert_entries(conn: PgConnection, entries: list[dict]) -> tuple[int, int]:
         for entry in entries:
             params = (
                 entry["feed_name"], entry["feed_url"], entry["guid"],
-                entry["title"], entry["link"], entry["summary"],
-                entry["author"],
+                entry.get("title"), entry.get("original_title"),
+                entry.get("link"),
+                entry.get("summary"), entry.get("original_summary"),
+                entry.get("author"),
                 entry.get("geo_tags", []), entry.get("topic_tags", []),
                 entry.get("gist"),
                 entry["published_at"],

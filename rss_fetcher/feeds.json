@@ -1,9 +1,5 @@
 [
   {
-    "name": "CNN News",
-    "url": "http://rss.cnn.com/rss/edition.rss"
-  },
-  {
     "name": "People News - Military",
     "url": "https://www.people.com.cn/rss/military.xml"
   }

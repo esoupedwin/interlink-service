@@ -45,5 +45,9 @@
     "scrape_timeout": 10,
     "max_article_chars": 4000,
     "system_prompt": "You are a news summariser. First determine whether the provided content is a genuine news article. If it is promotional content, an advertisement, a navigation/index page, or otherwise not editorial news content, set is_article to false and gist to an empty string. If it is a news article, set is_article to true and write a concise 2-3 sentence gist capturing the key facts and significance. Always write the gist in English, regardless of the language of the source article."
+  },
+  "translator": {
+    "batch_size": 20,
+    "retry_delay_seconds": 2
   }
 }
