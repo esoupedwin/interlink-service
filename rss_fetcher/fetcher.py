@@ -2,11 +2,13 @@
 RSS / Atom feed fetching and normalization.
 """
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 import feedparser
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,12 @@ def _parse_date(entry: feedparser.FeedParserDict) -> datetime | None:
     return None
 
 
+def _strip_html(text: str) -> str:
+    """Remove HTML tags and normalise whitespace from a string."""
+    clean = BeautifulSoup(text, "lxml").get_text(separator=" ")
+    return " ".join(clean.split())
+
+
 def _normalize_entry(feed_name: str, feed_url: str, entry: feedparser.FeedParserDict) -> dict:
     """
     Map a feedparser entry to the flat dict expected by db.insert_entries.
@@ -49,15 +57,19 @@ def _normalize_entry(feed_name: str, feed_url: str, entry: feedparser.FeedParser
         or ""
     ).strip()
 
-    summary = entry.get("summary") or entry.get("content", [{}])[0].get("value", "")
+    raw_summary = entry.get("summary") or entry.get("content", [{}])[0].get("value", "")
+    summary = _strip_html(raw_summary) if raw_summary else ""
+
+    raw_title = entry.get("title") or ""
+    title = _strip_html(raw_title) if raw_title else ""
 
     return {
         "feed_name": feed_name,
         "feed_url": feed_url,
         "guid": guid,
-        "title": (entry.get("title") or "").strip() or None,
+        "title": title or None,
         "link": (entry.get("link") or "").strip() or None,
-        "summary": summary.strip() or None,
+        "summary": summary or None,
         "author": (entry.get("author") or "").strip() or None,
         "published_at": _parse_date(entry),
     }
