@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS feed_entries (
 ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS geo_tags   TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS topic_tags TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS gist TEXT;
+DROP INDEX  IF EXISTS idx_feed_entries_tags;
+ALTER TABLE feed_entries DROP COLUMN IF EXISTS tags;
 
 CREATE INDEX IF NOT EXISTS idx_feed_entries_feed_url
     ON feed_entries (feed_url);
