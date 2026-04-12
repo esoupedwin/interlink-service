@@ -121,9 +121,10 @@ def run() -> None:
             logger.info("Feed '%s': no entries to insert.", name)
             continue
 
-        tags = tag_entries(entries)
-        for entry, entry_tags in zip(entries, tags):
-            entry["tags"] = entry_tags
+        tag_results = tag_entries(entries)
+        for entry, tag_result in zip(entries, tag_results):
+            entry["geo_tags"] = tag_result["geo_tags"]
+            entry["topic_tags"] = tag_result["topic_tags"]
 
         gists = summarise_entries(entries)
         for entry, gist in zip(entries, gists):
@@ -156,8 +157,8 @@ def run() -> None:
                 )
                 retry_tags = tag_entries(untagged)
                 with managed_connection() as conn:
-                    for entry, entry_tags in zip(untagged, retry_tags):
-                        update_entry_tags(conn, entry["id"], entry_tags)
+                    for entry, tag_result in zip(untagged, retry_tags):
+                        update_entry_tags(conn, entry["id"], tag_result["geo_tags"], tag_result["topic_tags"])
                 logger.info(
                     "Feed '%s': backfill complete — %d entries re-tagged.",
                     name, len(untagged),

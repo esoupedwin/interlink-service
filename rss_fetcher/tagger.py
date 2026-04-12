@@ -1,8 +1,9 @@
 """
 LLM-based categorization of RSS feed entries using OpenAI Structured Outputs.
 
-Tags are constrained at the API level via a JSON Schema enum — the model
-cannot return any tag outside the categories list defined in config.json.
+Tags are split into two sets — geographic (geo_tags) and topic (topic_tags) —
+each constrained at the API level via a JSON Schema enum. The model cannot
+return any tag outside the lists defined in config.json.
 """
 import json
 import logging
@@ -24,15 +25,27 @@ def _load_config() -> dict:
 
 
 def _build_system_prompt(tagging_cfg: dict) -> str:
-    categories = ", ".join(tagging_cfg["categories"])
-    return tagging_cfg["system_prompt"].format(categories=categories)
+    geo = ", ".join(tagging_cfg["geo_categories"])
+    topic = ", ".join(tagging_cfg["topic_categories"])
+    return tagging_cfg["system_prompt"].format(geo_categories=geo, topic_categories=topic)
 
 
-def _build_response_format(categories: list[str]) -> dict:
+def _build_response_format(geo_categories: list[str], topic_categories: list[str]) -> dict:
     """
-    Build an OpenAI Structured Outputs JSON Schema that constrains every tag
-    to the exact strings in `categories`. The model cannot emit anything else.
+    Build an OpenAI Structured Outputs JSON Schema that constrains geo_tags and
+    topic_tags to their respective enum lists. The model cannot emit anything else.
     """
+    def _tag_array(enum: list[str], description: str) -> dict:
+        return {
+            "type": "array",
+            "description": description,
+            "items": {
+                "type": "array",
+                "description": "Tags for a single entry.",
+                "items": {"type": "string", "enum": enum},
+            },
+        }
+
     return {
         "type": "json_schema",
         "json_schema": {
@@ -41,20 +54,16 @@ def _build_response_format(categories: list[str]) -> dict:
             "schema": {
                 "type": "object",
                 "properties": {
-                    "tags": {
-                        "type": "array",
-                        "description": "One inner array of tags per input entry, in the same order.",
-                        "items": {
-                            "type": "array",
-                            "description": "Tags assigned to a single entry.",
-                            "items": {
-                                "type": "string",
-                                "enum": categories,
-                            },
-                        },
-                    }
+                    "geo_tags": _tag_array(
+                        geo_categories,
+                        "One inner array of geographic tags per input entry, in the same order.",
+                    ),
+                    "topic_tags": _tag_array(
+                        topic_categories,
+                        "One inner array of topic tags per input entry, in the same order.",
+                    ),
                 },
-                "required": ["tags"],
+                "required": ["geo_tags", "topic_tags"],
                 "additionalProperties": False,
             },
         },
@@ -70,13 +79,25 @@ def _build_user_prompt(entries: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
+def _normalise_length(result: list, expected: int, fallback: list) -> list:
+    """Pad or truncate `result` to `expected` length, filling gaps with `fallback`."""
+    if len(result) != expected:
+        logger.warning(
+            "Response length mismatch: got %d arrays for %d entries. Padding.",
+            len(result), expected,
+        )
+        result = (result + [fallback for _ in range(expected)])[: expected]
+    return result
+
+
 def _call_openai(
     client: OpenAI,
     entries: list[dict],
     system_prompt: str,
     response_format: dict,
     default_model: str,
-) -> list[list[str]]:
+) -> list[dict]:
+    """Returns a list of {geo_tags, topic_tags} dicts, one per entry."""
     model = os.environ.get("OPENAI_MODEL", default_model)
     logger.debug("Sending %d entries to model '%s'.", len(entries), model)
 
@@ -94,29 +115,22 @@ def _call_openai(
     logger.debug("Raw model response:\n%s", raw)
 
     data = json.loads(raw)
-    result = data["tags"]  # schema guarantees this key exists
+    geo_list = _normalise_length(data["geo_tags"], len(entries), [])
+    topic_list = _normalise_length(data["topic_tags"], len(entries), [])
 
-    if len(result) != len(entries):
-        logger.warning(
-            "Response length mismatch: got %d tag arrays for %d entries. Padding.",
-            len(result), len(entries),
-        )
-        result = (result + [[] for _ in entries])[: len(entries)]
-
-    # Apply Misc fallback for any entry the model left with an empty array
-    final = []
-    for i, (entry, row) in enumerate(zip(entries, result)):
-        if not row:
-            title = entry.get("title", "(no title)")
+    result = []
+    for i, (entry, geo, topic) in enumerate(zip(entries, geo_list, topic_list)):
+        # Geo tags: empty is acceptable (some articles have no clear geo focus)
+        # Topic tags: apply Misc fallback if model returned nothing
+        if not topic:
             logger.warning(
-                "Entry %d ('%s'): model returned empty tags — applying Misc fallback.",
-                i + 1, title,
+                "Entry %d ('%s'): model returned empty topic_tags — applying Misc fallback.",
+                i + 1, entry.get("title", "(no title)"),
             )
-            final.append(["Misc"])
-        else:
-            final.append(row)
+            topic = ["Misc"]
+        result.append({"geo_tags": geo, "topic_tags": topic})
 
-    return final
+    return result
 
 
 def _tag_batch_with_retry(
@@ -127,7 +141,7 @@ def _tag_batch_with_retry(
     response_format: dict,
     default_model: str,
     retry_delay: int,
-) -> list[list[str]]:
+) -> list[dict]:
     """Call OpenAI for a batch, retrying once on failure."""
     for attempt in (1, 2):
         try:
@@ -142,8 +156,7 @@ def _tag_batch_with_retry(
             if attempt == 1:
                 logger.warning(
                     "Batch %d–%d failed (attempt 1): %s. Retrying in %ds...",
-                    batch_start + 1, batch_start + len(batch),
-                    exc, retry_delay,
+                    batch_start + 1, batch_start + len(batch), exc, retry_delay,
                 )
                 time.sleep(retry_delay)
             else:
@@ -151,16 +164,16 @@ def _tag_batch_with_retry(
                     "Batch %d–%d failed after 2 attempts: %s. Entries will get Misc fallback.",
                     batch_start + 1, batch_start + len(batch), exc,
                 )
-                return [["Misc"]] * len(batch)
+                return [{"geo_tags": [], "topic_tags": ["Misc"]}] * len(batch)
 
 
-def tag_entries(entries: list[dict]) -> list[list[str]]:
+def tag_entries(entries: list[dict]) -> list[dict]:
     """
-    Assign category tags to each entry using OpenAI Structured Outputs.
+    Assign geographic and topic tags to each entry using OpenAI Structured Outputs.
 
-    Tags are enforced by a JSON Schema enum — only categories defined in
-    config.json can appear in the output. Every entry is guaranteed at least
-    ["Misc"] — never an empty list.
+    Returns a list of dicts with keys 'geo_tags' and 'topic_tags', one per entry.
+    Tags are enforced by JSON Schema enums — only categories defined in config.json
+    can appear in the output. Every entry is guaranteed at least ["Misc"] in topic_tags.
     """
     if not entries:
         return []
@@ -168,19 +181,21 @@ def tag_entries(entries: list[dict]) -> list[list[str]]:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         logger.warning("OPENAI_API_KEY not set — skipping tagging.")
-        return [[] for _ in entries]
+        return [{"geo_tags": [], "topic_tags": []} for _ in entries]
 
     config = _load_config()
     tagging_cfg = config["tagging"]
     default_model = config.get("default_model", "gpt-4o-mini")
 
     system_prompt = _build_system_prompt(tagging_cfg)
-    response_format = _build_response_format(tagging_cfg["categories"])
+    response_format = _build_response_format(
+        tagging_cfg["geo_categories"], tagging_cfg["topic_categories"]
+    )
     batch_size = tagging_cfg["batch_size"]
     retry_delay = tagging_cfg["retry_delay_seconds"]
 
     client = OpenAI(api_key=api_key)
-    all_tags: list[list[str]] = []
+    all_tags: list[dict] = []
 
     for batch_start in range(0, len(entries), batch_size):
         batch = entries[batch_start: batch_start + batch_size]

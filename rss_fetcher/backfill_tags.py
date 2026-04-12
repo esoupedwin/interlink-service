@@ -1,5 +1,5 @@
 """
-One-shot backfill: find all feed_entries with empty tags and tag them.
+One-shot backfill: find all feed_entries with empty topic_tags and tag them.
 
 Usage:
     python backfill_tags.py
@@ -24,11 +24,11 @@ logger = logging.getLogger("backfill_tags")
 _FETCH_SQL = """
 SELECT id, feed_name, feed_url, title, summary
 FROM feed_entries
-WHERE tags = '{}'
+WHERE topic_tags = '{}'
 ORDER BY id;
 """
 
-_UPDATE_SQL = "UPDATE feed_entries SET tags = %s WHERE id = %s;"
+_UPDATE_SQL = "UPDATE feed_entries SET geo_tags = %s, topic_tags = %s WHERE id = %s;"
 
 
 def run() -> None:
@@ -53,19 +53,18 @@ def run() -> None:
 
     logger.info("Found %d untagged entries. Tagging now...", len(rows))
 
-    # Build entry dicts the tagger expects
     entries = [
         {"id": r[0], "feed_name": r[1], "feed_url": r[2], "title": r[3], "summary": r[4]}
         for r in rows
     ]
 
-    tags = tag_entries(entries)
+    tag_results = tag_entries(entries)
 
     updated = 0
     with managed_connection() as conn:
         with conn.cursor() as cur:
-            for entry, entry_tags in zip(entries, tags):
-                cur.execute(_UPDATE_SQL, (entry_tags, entry["id"]))
+            for entry, tag_result in zip(entries, tag_results):
+                cur.execute(_UPDATE_SQL, (tag_result["geo_tags"], tag_result["topic_tags"], entry["id"]))
                 updated += cur.rowcount
 
     logger.info("Backfill complete. %d entries updated.", updated)

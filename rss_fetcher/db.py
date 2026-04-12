@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS feed_entries (
     link         TEXT,
     summary      TEXT,
     author       TEXT,
-    tags         TEXT[]      NOT NULL DEFAULT '{}',
+    geo_tags     TEXT[]      NOT NULL DEFAULT '{}',
+    topic_tags   TEXT[]      NOT NULL DEFAULT '{}',
     gist         TEXT,
     published_at TIMESTAMPTZ,
     fetched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -34,7 +35,8 @@ CREATE TABLE IF NOT EXISTS feed_entries (
 );
 
 -- Idempotent migrations
-ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS geo_tags   TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS topic_tags TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE feed_entries ADD COLUMN IF NOT EXISTS gist TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_feed_entries_feed_url
@@ -43,15 +45,18 @@ CREATE INDEX IF NOT EXISTS idx_feed_entries_feed_url
 CREATE INDEX IF NOT EXISTS idx_feed_entries_published_at
     ON feed_entries (published_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_feed_entries_tags
-    ON feed_entries USING GIN (tags);
+CREATE INDEX IF NOT EXISTS idx_feed_entries_geo_tags
+    ON feed_entries USING GIN (geo_tags);
+
+CREATE INDEX IF NOT EXISTS idx_feed_entries_topic_tags
+    ON feed_entries USING GIN (topic_tags);
 """
 
 _INSERT_SQL = """
 INSERT INTO feed_entries
-    (feed_name, feed_url, guid, title, link, summary, author, tags, gist, published_at)
+    (feed_name, feed_url, guid, title, link, summary, author, geo_tags, topic_tags, gist, published_at)
 VALUES
-    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT ON CONSTRAINT uq_feed_entry
 DO NOTHING;
 """
@@ -122,7 +127,9 @@ def insert_entries(conn: PgConnection, entries: list[dict]) -> tuple[int, int]:
             params = (
                 entry["feed_name"], entry["feed_url"], entry["guid"],
                 entry["title"], entry["link"], entry["summary"],
-                entry["author"], entry.get("tags", []), entry.get("gist"),
+                entry["author"],
+                entry.get("geo_tags", []), entry.get("topic_tags", []),
+                entry.get("gist"),
                 entry["published_at"],
             )
             cur.execute(_INSERT_SQL, params)
@@ -133,13 +140,13 @@ def insert_entries(conn: PgConnection, entries: list[dict]) -> tuple[int, int]:
 
 
 def fetch_untagged_entries(conn: PgConnection, feed_url: str) -> list[dict]:
-    """Return entries for a given feed that still have empty tags."""
+    """Return entries for a given feed that still have empty topic_tags."""
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT id, feed_name, feed_url, title, summary
             FROM feed_entries
-            WHERE feed_url = %s AND tags = '{}'
+            WHERE feed_url = %s AND topic_tags = '{}'
             ORDER BY id;
             """,
             (feed_url,),
@@ -151,11 +158,16 @@ def fetch_untagged_entries(conn: PgConnection, feed_url: str) -> list[dict]:
     ]
 
 
-def update_entry_tags(conn: PgConnection, entry_id: int, tags: list[str]) -> None:
-    """Overwrite the tags for a single entry by id."""
+def update_entry_tags(
+    conn: PgConnection,
+    entry_id: int,
+    geo_tags: list[str],
+    topic_tags: list[str],
+) -> None:
+    """Overwrite the geo and topic tags for a single entry by id."""
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE feed_entries SET tags = %s WHERE id = %s;",
-            (tags, entry_id),
+            "UPDATE feed_entries SET geo_tags = %s, topic_tags = %s WHERE id = %s;",
+            (geo_tags, topic_tags, entry_id),
         )
     conn.commit()

@@ -199,7 +199,7 @@ def summarise_entries(entries: list[dict]) -> list[str | None]:
     # Determine which entries qualify (not Misc-tagged, has a link)
     to_scrape: list[tuple[int, dict]] = []  # (original_index, entry)
     for i, entry in enumerate(entries):
-        tags = entry.get("tags") or []
+        tags = entry.get("topic_tags") or []
         if "Misc" in tags:
             logger.debug("Entry %d ('%s'): skipping summarisation (tagged Misc).", i + 1, entry.get("title"))
             continue
