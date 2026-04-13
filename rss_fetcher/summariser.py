@@ -42,7 +42,7 @@ _RESPONSE_FORMAT = {
                 },
                 "gist": {
                     "type": "string",
-                    "description": "A concise 2-3 sentence summary of the article. Empty string if is_article is false.",
+                    "description": "A concise 2-3 sentence summary of the article written in English. Must always be in English regardless of the language of the source article. Empty string if is_article is false.",
                 },
             },
             "required": ["is_article", "gist"],
