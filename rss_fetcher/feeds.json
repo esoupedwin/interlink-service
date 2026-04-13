@@ -12,27 +12,27 @@
     "url": "https://www.aljazeera.com/xml/rss/all.xml"
   },
   {
-    "name": "Xinhua China Feed",
-    "url": "https://www.xinhuanet.com/english/rss/chinarss.xml"
-  },
-  {
-    "name": "China Daily Feed",
-    "url": "http://www.chinadaily.com.cn/rss/china_rss.xml"
-  },
-  {
     "name": "China News",
-    "url": "https://www.chinanews.com.cn/rss/china.xml"
-  },
-  {
-    "name": "People News - Military",
-    "url": "https://www.people.com.cn/rss/military.xml"
-  },
-  {
-    "name": "China News - Politics",
     "url": "https://www.chinanews.com.cn/rss/china.xml"
   },
   {
     "name": "South China Morning Post",
     "url": "https://www.scmp.com/rss/4/feed/"
+  },
+  {
+    "name": "The Verge",
+    "url": "https://www.theverge.com/rss/index.xml"
+  },
+  {
+    "name": "Tech Crunch",
+    "url": "https://techcrunch.com/tag/artificial-intelligence/feed/"
+  },
+  {
+    "name": "MIT Technology Review - AI",
+    "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/"
+  },
+  {
+    "name": "Straits Times - Singapore",
+    "url": "https://www.straitstimes.com/news/singapore/rss.xml"
   }
 ]
