@@ -34,5 +34,9 @@
   {
     "name": "Straits Times - Singapore",
     "url": "https://www.straitstimes.com/news/singapore/rss.xml"
+  },
+  {
+    "name": "Malay Mail - Malaysia",
+    "url": "https://www.malaymail.com/feed/rss/malaysia"
   }
 ]
