@@ -38,5 +38,13 @@
   {
     "name": "Malay Mail - Malaysia",
     "url": "https://www.malaymail.com/feed/rss/malaysia"
+  },
+  {
+    "name": "NVIDIA Developer Blog",
+    "url": "https://developer.nvidia.com/blog/rss"
+  },
+  {
+    "name": "Deepmind Blog",
+    "url": "https://deepmind.google/blog/rss.xml"
   }
 ]
