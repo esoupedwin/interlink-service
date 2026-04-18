@@ -107,6 +107,12 @@ def _scrape_article(url: str, timeout: int, max_chars: int) -> str | None:
         logger.warning("No article text extracted from '%s'.", url)
         return None
 
+    method = "semantic" if body else "paragraph-fallback"
+    truncated = len(text) > max_chars
+    logger.debug(
+        "Scraped '%s' — %d chars%s via %s.",
+        url, min(len(text), max_chars), " (truncated)" if truncated else "", method,
+    )
     return text[:max_chars]
 
 
@@ -252,6 +258,10 @@ def summarise_entries(entries: list[dict]) -> list[str | None]:
         title = entry.get("title") or "(no title)"
         text = _scrape_article(entry["link"], scrape_timeout, max_article_chars)
         if text:
+            logger.info(
+                "Entry %d ('%s'): scraped %d chars from %s.",
+                i + 1, title, len(text), entry["link"],
+            )
             scraped.append((i, entry, text))
         else:
             logger.warning(
@@ -287,6 +297,11 @@ def summarise_entries(entries: list[dict]) -> list[str | None]:
             n_api_fail += 1
         else:
             gists[orig_idx] = result
+            logger.info(
+                "Entry %d ('%s'): gist generated — '%s%s'",
+                orig_idx + 1, title,
+                result[:80], "..." if len(result) > 80 else "",
+            )
             n_gisted += 1
 
     logger.info(
