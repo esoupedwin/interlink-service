@@ -46,5 +46,17 @@
   {
     "name": "Deepmind Blog",
     "url": "https://deepmind.google/blog/rss.xml"
+  },
+  {
+    "name": "OpenAI",
+    "url": "https://openai.com/news/rss.xml"
+  },
+  {
+    "name": "Anthropic News",
+    "url": "https://rss.app/feeds/u1APrKOM22PV5sgk.xml"
+  },
+  {
+    "name": "Venture Beat",
+    "url": "https://venturebeat.com/feed/"
   }
 ]
